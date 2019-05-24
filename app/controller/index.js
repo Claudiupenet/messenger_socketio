@@ -25,6 +25,7 @@ const register = (req, res) => {
 			}
 		})
 	} else {
+		console.log(req.body)
 		res.status(422).json({message: "Please provide all data for register process"})
 	}
 }
@@ -54,19 +55,72 @@ const login = (req, res) => {
 }
 
 const get_my_data = (req, res) => {
-	console.log(req.user)
-	console.log(req.token_payload)
-	console.log(req.ioana)
-	if(req.headers["token"]) {
-		JWT.verify(req.headers["token"], CONFIG.JWT_SECRET_KEY, (err, payload) => {
-			const user = User.findOne({username: payload.username})
-			// console.log(err, payload.username, user)
-		})
-		//const user = get_user(req.headers["token"]);
-		//console.log(req.headers["token"], user)
-		res.sendStatus(200);
+	if(req.user) {
+		res.status(200).json({username: req.user.username, picture: req.user.picture, phone: req.user.phone})
+	}
+}
+
+// status: 0 = friend confirmed, 1 = received friend request, 2 = unconfirmed friend
+
+const send_friend_request = (req, res) => {
+	if(!req.body.friend_id) {
+		res.status(400).json({message: "Please provide friend id!"})
 	} else {
-		res.status(403).json({message: "Missing login token"})
+		User.findById(req.body.friend_id)
+		.then(data => {
+			User.updateOne({email: data.email}, {
+				$set: {
+					friends: [...(data.friends ? data.friends : []), {email: req.user.email, status: 1} ]
+				}
+			})
+			.then(result => {
+				User.updateOne({email: req.user.email}, {
+					$set: {
+						friends: [...(data.friends ? data.friends : []), {email: data.email, status: 2} ]
+					}
+				})
+				.then(blabla => {
+
+					res.status(200).json({message: "Friend request sent!"})
+				})
+				.catch(errss => {
+					res.status(500).json({message: "Error when adding friend"})
+				} )
+			})
+			.catch(err => {
+				res.status(500).json({message: "Database error at adding friend request."})
+			})
+		})
+		.catch(err => {
+			res.status(500).json({message: "Wrong friend id!"})
+		})
+	}
+}
+
+const confirm_friend_request = (req, res) =>  {
+	if(!req.body.friend_id) {
+		res.status(400).json({message: "Please provide friend id!"})
+	} else {
+		User.findById(req.body.friend_id)
+		.then( data => {
+			User.updateOne({email: data.email}, {
+				$set: {
+					friends: data.friends.map( friend => {
+						if(friend.email === req.user.email) {
+							friend.status = 0
+						}
+						return friend;
+					})
+				}
+			})
+			.then(result => {
+				User.updateOne({email: req.user.email}, {
+					$set: {
+						friends: [...data.friends, {}]
+					}
+				})
+			})
+		})
 	}
 }
 
@@ -77,7 +131,6 @@ const extractDataMiddleware = (req, res, next) => {
 		.then(result => {
 			if(result !== null) {
 				req.user = result;
-				req.ioana = "cur";
 				next();
 			} else {
 				res.status(404).json({message: "Missing user"})
@@ -89,9 +142,27 @@ const extractDataMiddleware = (req, res, next) => {
 	}
 }
 
+const authMiddleware = (req, res, next) => {
+	if(req.headers["token"]) {
+		JWT.verify(req.headers["token"], CONFIG.JWT_SECRET_KEY, (err, payload) => {
+			if(err) {
+				res.status(403).json({message: "Invalid token"})
+			} else {
+				req.token_payload = payload;
+				next();
+			}
+		})
+	} else {
+		res.status(403).json({message: "Missing login token"})
+	}
+}
+
 module.exports = {
 	register,
 	login,
 	get_my_data,
-	extractDataMiddleware
+	authMiddleware,
+	extractDataMiddleware,
+	send_friend_request,
+	confirm_friend_request
 }

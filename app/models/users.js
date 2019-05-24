@@ -20,7 +20,8 @@ var UserSchema = new Schema({
 	picture: {type: String},
 	phone: {type: String, },
 	age: {type: Number, min: 16, max: 120},
-	sex: {type: String, enum: ["Male", "Female"]}
+	sex: {type: String, enum: ["Male", "Female", null]},
+	friends: {type: Array}
 }, {
 	versionKey: false
 })
