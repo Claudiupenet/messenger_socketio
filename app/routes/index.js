@@ -1,7 +1,6 @@
 const express = require('express');
-const JWT = require("jsonwebtoken");
-const CONFIG = require('../config');
-const CONTROLLER = require('../controller/index')
+const User_controller = require('../controller/users');
+const Conversation_controller = require('../controller/conversations');
 
 const router = express.Router();
 
@@ -9,12 +8,17 @@ router.get('/healthcheck', (req, res) => {
 	res.status(200).json({message: "Server is alive"})
 })
 
-router.post("/register", CONTROLLER.register);
-router.post("/login", CONTROLLER.login);
-router.use("/user", CONTROLLER.authMiddleware);
-router.use("/user", CONTROLLER.extractDataMiddleware);
-router.get('/user/get_my_data', CONTROLLER.get_my_data);
-router.post('/user/send_friend_request', CONTROLLER.send_friend_request);
-router.post('/user/confirm_friend_request', CONTROLLER.confirm_friend_request)
+router.post("/register", User_controller.register);
+router.post("/login", User_controller.login);
+router.use("/user", User_controller.authMiddleware);
+router.use("/user", User_controller.extractDataMiddleware);
+router.get('/user/get_my_data', User_controller.get_my_data);
+//router.get('/user/test/:test', User_controller.test);
+router.get('/user/test/', User_controller.test);
+router.post('/user/send_friend_request', User_controller.send_friend_request);
+router.post('/user/confirm_friend_request', User_controller.confirm_friend_request);
+router.get('/user/get_friends_list', User_controller.get_friends_list);
+router.get('/user/get_friends_suggestions', User_controller.get_friends_suggestions);
+router.get('/user/get_conversation', Conversation_controller.get_conversation)
 
 module.exports = router;
