@@ -2,6 +2,20 @@ const Conversation = require('../models/conversation')
 
 const get_conversation = (req, res) => {
 
+    res.status(200).json({message: "Conversation retrieved successfully!", conversation: req.conversation})
+}
+
+const add_message = (req, res) => {
+    if(!req.body.message) {
+        res.status(400).json({message: "Please provide a message!"})
+    } else {
+        req.conversation.messages.push({author: req.user._id, message: req.body.message, seen: false, date: Date.now()})
+        req.conversation.save();
+        res.status(200).json({message: "Message added!"})
+    }
+}
+
+const extract_conversation = (req, res, next) => {
     if(!req.body.conversation_id) {
         res.status(400).json({ message: "Please provide conversation_id!" })
     } else {
@@ -16,7 +30,8 @@ const get_conversation = (req, res) => {
                 if(conversation.participants.some(participant => participant._id.equals(req.user._id)) === false) {
                     res.status(403).json({message: "You can only see your convesations!"})
                 } else {
-                    res.status(200).json({message: "Conversation retrieved!", conversation: conversation})
+                    req.conversation = conversation;
+                    next();
                 }
             }
         })
@@ -24,5 +39,7 @@ const get_conversation = (req, res) => {
 }
 
 module.exports = {
-    get_conversation
+    get_conversation,
+    extract_conversation,
+    add_message
 }

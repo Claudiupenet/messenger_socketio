@@ -26,8 +26,10 @@ var UserSchema = new Schema({
 	sex: { type: String, enum: ["Male", "Female", null], default: null },
 	friends:[{friend: {type: Schema.Types.ObjectId, ref: 'User'}, status: Number, _id: false, conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'}}]
 	
+	
 }, {
-		versionKey: false
+		versionKey: false,
+		timestamps: true
 	})
 
 

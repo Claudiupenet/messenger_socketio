@@ -198,6 +198,10 @@ const get_friends_suggestions = (req, res) => {
 	})
 }
 
+// cons send_seen_event = (req,res) => {
+	
+// }
+
 const extractDataMiddleware = (req, res, next) => {
 	if (req.token_payload.username) {
 		User.findOne({username: req.token_payload.username}, (err, currentUser) => {
