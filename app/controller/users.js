@@ -79,7 +79,7 @@ const send_friend_request = (req, res) => {
 							res.status(500).json({message: "Error at saving convesation"})
 						} else {
 
-							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id})
+							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id, last_activity: {timestamp: Date.now()}})
 							friendWannaBe.save((e) => {
 								if(e) {
 									res.status(500).json({message: "Error at adding friend request " + e})
@@ -93,7 +93,7 @@ const send_friend_request = (req, res) => {
 										
 										} else {
 											if(currentUser.friends.find(friend => friend.friend.equals(friendWannaBe._id)) === undefined) {
-												currentUser.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id, seen: true})
+												currentUser.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id, last_activity:{timestamp: Date.now()}})
 												currentUser.save()
 												res.status(200).json({message: "Friend request sent!"})
 											} else {
@@ -138,7 +138,7 @@ const confirm_friend_request = (req, res) => {
 					if(req.body.answer === true) {
 
 						user.status = 0;
-						user.seen = false;
+						user.last_activity.timestamp = Date.now();
 						newFriend.save((e) => {
 							if(e) {
 								res.status(500).json({message: "Error at confirming friend request " + e})
@@ -153,7 +153,7 @@ const confirm_friend_request = (req, res) => {
 										if(user2) {
 				
 											user2.status = 0;
-											user2.seen = true;
+											user2.last_activity.timestamp = Date.now();
 											currentUser.save();
 											res.status(200).json({message: "Friend request confirmed!"})
 										} else {
@@ -228,6 +228,20 @@ const get_friends_list = (req, res) => {
 	res.status(200).json({message: "Successfully retrieved friends list!", friends: req.user.friends})
 }
 
+const get_conversations_list = (req, res) => {
+	User.findById(req.user._id)
+	.then(data => {
+		data.friends = data.friends.sort((a,b) => {
+			if(a.last_activity.timestamp > b.last_activity.timestamp) {
+				return -1;
+			} else if (a.last_activity.timestamp < b.last_activity.timestamp) {
+				return 1;
+			}
+			return 0;
+		})
+	})
+}
+
 const get_friends_requests = (req, res) => {
 	
 	var friends_requests = req.user.friends.filter( friend => friend.status === 1);
@@ -261,13 +275,14 @@ const extractDataMiddleware = (req, res, next) => {
 		.exec((err, currentUser) => {
 			if(err) {
 				res.status(404).json({ message: "Missing user. Bad token?" })
+			} else if(currentUser === null) {
+				res.status(404).json({message: "Missing user. Bad token?"})
 			} else {
-				req.user = currentUser;
-				next();
+					
+					req.user = currentUser;
+					next();
 			}
 		})
-	} else {
-		res.status(404).json({ message: "Missing user field" })
 	}
 }
 
@@ -302,5 +317,6 @@ module.exports = {
 	get_friends_list,
 	get_friends_suggestions,
 	get_friends_requests,
+	get_conversations_list,
 	test
 }
