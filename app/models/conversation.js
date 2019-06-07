@@ -7,7 +7,8 @@ var ConversationSchema = new mongoose.Schema({
 	messages: [{author: {type: mongoose.Schema.Types.ObjectId, ref: 'User'}, message: String, timestamp: Date }]
 }, {
 		versionKey: false,
-		timestamps: true
+		timestamps: {createdAt: false}
+		
 	})
 		
 var Conversation = mongoose.model("Conversation", ConversationSchema);

@@ -29,7 +29,7 @@ const add_message = (req, res) => {
                         if (error) {
                             req.status(500).json({ message: "Error at setting seen event " + err })
                         } else {
-                            var myFriendship = req.user.friends.find(friendd => friendd.friend.equals(currentFriend._id));
+                            var myFriendship = req.user.friends.find(friendd => friendd.friend._id.equals(currentFriend._id));
                             myFriendship.last_activity = { message: req.body.message, author: req.user.firstName + ' ' + req.user.lastName, timestamp: Date.now() };
                             req.user.save(error => {
                                 if (error) {

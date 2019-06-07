@@ -29,7 +29,8 @@ var UserSchema = new Schema({
 				status: Number,
 				_id: false,
 				conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'},
-				last_activity: {message: String, author: String, timestamp: Date}}	]
+				last_activity:  Date
+			}	]
 }, {
 		versionKey: false,
 		timestamps: true

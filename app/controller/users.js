@@ -230,15 +230,29 @@ const get_friends_list = (req, res) => {
 
 const get_conversations_list = (req, res) => {
 	User.findById(req.user._id)
-	.then(data => {
-		data.friends = data.friends.sort((a,b) => {
-			if(a.last_activity.timestamp > b.last_activity.timestamp) {
-				return -1;
-			} else if (a.last_activity.timestamp < b.last_activity.timestamp) {
-				return 1;
-			}
-			return 0;
-		})
+	.populate({path: "friends.friend", select: "firstName lastName picture"})
+	.populate('friends.conversation', 'messages updatedAt')
+	.lean()
+	.exec((err, currentUser) => {
+		if(err) {
+			res.status(404).json({ message: "Error at retrieving conversations list " + err })
+		} else if(currentUser === null) {
+			res.status(404).json({message: "Missing user. Bad token?"})
+		} else {
+				currentUser.friends.map(friend => {
+					var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
+					delete friend.conversation.messages;
+					friend.conversation.last_message = last_message;
+					return friend;
+				})
+				if(currentUser.friends.length > 1) {
+					 currentUser.friends.sort((a, b) => {
+						return a.conversation.updatedAt > b.conversation.updatedAt ? -1 : a.conversation.updatedAt < b.conversation.updatedAt ? 1 : 0;
+					})
+					//return last_message_timestamp > currentUser.last_activity ? -1 : last_message_timestamp < currentUser.last_activity ? 1 : 0;
+				}
+				res.status(200).json({message: "Successfully retrieved conversations list!", conversations: currentUser.friends})
+		}
 	})
 }
 
@@ -272,13 +286,27 @@ const extractDataMiddleware = (req, res, next) => {
 	if (req.token_payload.email) {
 		User.findOne({email: req.token_payload.email})
 		.populate({path: "friends.friend", select: "firstName lastName picture"})
+		//.populate('friends.conversation', 'messages updatedAt')
+		.lean()
 		.exec((err, currentUser) => {
 			if(err) {
-				res.status(404).json({ message: "Missing user. Bad token?" })
+				res.status(404).json({ message: "Error at retrieving user information " + err })
 			} else if(currentUser === null) {
 				res.status(404).json({message: "Missing user. Bad token?"})
 			} else {
-					
+					// currentUser.friends.map(friend => {
+					// 	var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
+					// 	delete friend.conversation.messages;
+					// 	friend.conversation.last_message = last_message;
+					// 	return friend;
+					// })
+					// if(currentUser.friends.length > 1) {
+					// 	var last_message_timestamp = currentUser.friends.sort((a, b) => {
+					// 		return a.conversation.updatedAt > b.conversation.updatedAt ? -1 : a.conversation.updatedAt < b.conversation.updatedAt ? 1 : 0;
+					// 	})
+					// 	return last_message_timestamp > currentUser.last_activity ? -1 : last_message_timestamp < currentUser.last_activity ? 1 : 0;
+					// }
+
 					req.user = currentUser;
 					next();
 			}
