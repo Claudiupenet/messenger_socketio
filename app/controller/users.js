@@ -73,42 +73,32 @@ const send_friend_request = (req, res) => {
 			} else {
 
 				if(friendWannaBe.friends.find(friend => friend.friend.equals(req.user._id)) === undefined) {
-					var conversation = new Conversation({participants: [req.user._id, friendWannaBe._id]});
+					var conversation = new Conversation({participants: [req.user._id, friendWannaBe._id], unseen: friendWannaBe._id});
 					conversation.save((error, callback) => {
 						if(error) {
 							res.status(500).json({message: "Error at saving convesation"})
 						} else {
 
-							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id, last_activity: {timestamp: Date.now()}})
+							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id});
+							friendWannaBe.newActivity.push(callback._id)
 							friendWannaBe.save((e) => {
 								if(e) {
 									res.status(500).json({message: "Error at adding friend request " + e})
 								} else {
 
-									User.findById(req.user._id, (err, currentUser) => {
-										if(err) {
-											res.status(500).json({message: "Database error " + err})
-										} else if(currentUser === null) {
-											res.status(404).json({message: "User not fond. Bad token? "})
-										
-										} else {
-											if(currentUser.friends.find(friend => friend.friend.equals(friendWannaBe._id)) === undefined) {
-												currentUser.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id, last_activity:{timestamp: Date.now()}})
-												currentUser.save()
-												res.status(200).json({message: "Friend request sent!"})
-											} else {
-												res.status(409).json({message: "Already friend or request sent/received!"})
-											}
-										}
-									})
+									if(req.user.friends.find(friend => friend.friend.equals(friendWannaBe._id)) === undefined) {
+										req.user.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id})
+										req.user.save()
+										res.status(200).json({message: "Friend request sent!"})
+									} else {
+										res.status(409).json({message: "Already friend or request sent/received!"})
+									}
+
 								}
 							})
 
 						}
 					})
-
-	
-	
 				} else {
 					res.status(409).json({message: "Already friend or request sent/received!"})
 				}
@@ -138,29 +128,26 @@ const confirm_friend_request = (req, res) => {
 					if(req.body.answer === true) {
 
 						user.status = 0;
-						user.last_activity.timestamp = Date.now();
+						newFriend.newActivity.push(user.conversation);
+						Conversation.findByIdAndUpdate(user.conversation, {unseen: newFriend._id}, (err) => {
+							if(err) {
+								res.status(500).json({message: "Error at updating conversation unseen " + err})
+							}
+						})
 						newFriend.save((e) => {
 							if(e) {
 								res.status(500).json({message: "Error at confirming friend request " + e})
 							} else {
-								User.findById(req.user._id, (err, currentUser) => {
-									if(err) {
-										res.status(500).json({message: "Database error " + err})
-									} else if(currentUser === null) {
-										res.status(404).json({message: "User not found. Bad token? "})
-									} else {
-										var user2 = currentUser.friends.find(friend2 => friend2.friend.equals(newFriend._id));
-										if(user2) {
-				
-											user2.status = 0;
-											user2.last_activity.timestamp = Date.now();
-											currentUser.save();
-											res.status(200).json({message: "Friend request confirmed!"})
-										} else {
-											res.status(404).json({message: "This user is not in your friends requests list!"})
-										}
-									}
-								})
+								var user2 = req.user.friends.find(friend2 => friend2.friend.equals(newFriend._id));
+								if(user2) {
+		
+									user2.status = 0;
+									req.user.save();
+									res.status(200).json({message: "Friend request confirmed!"})
+								} else {
+									res.status(404).json({message: "This user is not in your friends requests list!"})
+								}
+
 							}
 						});
 					} else {
@@ -171,26 +158,19 @@ const confirm_friend_request = (req, res) => {
 
 								res.status(500).json({message: "Error at removing friend request " + e})
 							} else {
-								User.findById(req.user._id, (err, currentUser) => {
-									if(err) {
-										res.status(500).json({message: "Database error at removing friend request " + err})
+								var friendsNew = req.user.friends.filter(friend => !friend.friend.equals(newFriend._id));
+								req.user.friends = friendsNew;
+								req.user.save(e => {
+									if(e) {
+										res.status(500).json({message: "Error at removing friend request " + e})
 									} else {
-										var friendsNew = currentUser.friends.filter(friend => !friend.friend.equals(newFriend._id));
-										currentUser.friends = friendsNew;
-										currentUser.save(e => {
-											if(e) {
-												res.status(500).json({message: "Error at removing friend request " + e})
-											} else {
-												res.status(200).json({message: "Successfully removed friend request!"})
-											}
-										})
+										res.status(200).json({message: "Successfully removed friend request!"})
 									}
 								})
+
 							}
 						})
-					}
-
-				
+					}		
 						
 				} else {
 					res.status(404).json({message: "Your are not in his friends requests list or you have already confirmed!"})
@@ -198,28 +178,6 @@ const confirm_friend_request = (req, res) => {
 			}
 		})
 		
-	}
-}
-
-const send_seen_event = (req, res) => {
-	if(!req.body.friend_id) {
-
-		res.status(400).json({message: "Please provide a friend_id!"})
-	} else {
-
-		var friend = req.user.friends.find( friend => friend.friend.equals(req.body.friend_id));
-		if(!friend) {
-			res.status(404).json({message: "Friend not found! Bad friend_id?"})
-		} else {
-			friend.seen = true;
-			req.user.save((error) => {
-				if(error) {
-					res.status(500).json({message: "Error at sending seen event " + error})
-				} else {
-					res.status(200).json({message: "Successfully sent seen event!"})
-				}
-			})
-		}
 	}
 }
 
@@ -235,7 +193,7 @@ const get_conversations_list = (req, res) => {
 	.lean()
 	.exec((err, currentUser) => {
 		if(err) {
-			res.status(404).json({ message: "Error at retrieving conversations list " + err })
+			res.status(500).json({ message: "Error at retrieving conversations list " + err })
 		} else if(currentUser === null) {
 			res.status(404).json({message: "Missing user. Bad token?"})
 		} else {
@@ -245,12 +203,7 @@ const get_conversations_list = (req, res) => {
 					friend.conversation.last_message = last_message;
 					return friend;
 				})
-				if(currentUser.friends.length > 1) {
-					 currentUser.friends.sort((a, b) => {
-						return a.conversation.updatedAt > b.conversation.updatedAt ? -1 : a.conversation.updatedAt < b.conversation.updatedAt ? 1 : 0;
-					})
-					//return last_message_timestamp > currentUser.last_activity ? -1 : last_message_timestamp < currentUser.last_activity ? 1 : 0;
-				}
+
 				res.status(200).json({message: "Successfully retrieved conversations list!", conversations: currentUser.friends})
 		}
 	})
@@ -282,33 +235,27 @@ const get_friends_suggestions = (req, res) => {
 
 }
 
+const check_activity = (req, res) => {
+	if(req.newActivity.length > 0) {
+		res.status(200).json({message: "New activity!"})
+	} else {
+		res.status(200).json({message: "No new activity!"})
+	}
+}
+
 const extractDataMiddleware = (req, res, next) => {
 	if (req.token_payload.email) {
 		User.findOne({email: req.token_payload.email})
 		.populate({path: "friends.friend", select: "firstName lastName picture"})
-		//.populate('friends.conversation', 'messages updatedAt')
-		.lean()
 		.exec((err, currentUser) => {
 			if(err) {
 				res.status(404).json({ message: "Error at retrieving user information " + err })
 			} else if(currentUser === null) {
 				res.status(404).json({message: "Missing user. Bad token?"})
 			} else {
-					// currentUser.friends.map(friend => {
-					// 	var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
-					// 	delete friend.conversation.messages;
-					// 	friend.conversation.last_message = last_message;
-					// 	return friend;
-					// })
-					// if(currentUser.friends.length > 1) {
-					// 	var last_message_timestamp = currentUser.friends.sort((a, b) => {
-					// 		return a.conversation.updatedAt > b.conversation.updatedAt ? -1 : a.conversation.updatedAt < b.conversation.updatedAt ? 1 : 0;
-					// 	})
-					// 	return last_message_timestamp > currentUser.last_activity ? -1 : last_message_timestamp < currentUser.last_activity ? 1 : 0;
-					// }
 
-					req.user = currentUser;
-					next();
+				req.user = currentUser;
+				next();
 			}
 		})
 	}
@@ -341,10 +288,10 @@ module.exports = {
 	extractDataMiddleware,
 	send_friend_request,
 	confirm_friend_request,
-	send_seen_event,
 	get_friends_list,
 	get_friends_suggestions,
 	get_friends_requests,
 	get_conversations_list,
+	check_activity,
 	test
 }

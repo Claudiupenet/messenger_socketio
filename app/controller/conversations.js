@@ -13,6 +13,8 @@ const get_conversation = (req, res) => {
 const add_message = (req, res) => {
     if (!req.body.message) {
         res.status(400).json({ message: "Please provide a message!" })
+    } else if(req.conversation.participants.includes(req.user._id)) {
+        res.status(403).json({message: "You can't add messages to this conversation!"})
     } else {
         var friend = req.conversation.participants.find(participant => !participant._id.equals(req.user._id));
         if (!friend) {
@@ -22,29 +24,23 @@ const add_message = (req, res) => {
                 if (error) {
                     res.status(500).json({ message: "Database error at retrieving friend " + error })
                 } else {
-                    var friendship = currentFriend.friends.find(friend => friend.friend.equals(req.user._id));
-                    friendship.last_activity = { message: req.body.message, author: req.user.firstName + ' ' + req.user.lastName, timestamp: Date.now() };
+                   if(currentFriend.newActivity.includes(req.conversation._id)) {
+                       currentFriend.newActivity =  currentFriend.newActivity.filter(x => !x.equals(req.conversation._id))
+                    }
+                    currentFriend.newActivity.push(req.conversation._id);
 
                     currentFriend.save((err) => {
                         if (error) {
                             req.status(500).json({ message: "Error at setting seen event " + err })
                         } else {
-                            var myFriendship = req.user.friends.find(friendd => friendd.friend._id.equals(currentFriend._id));
-                            myFriendship.last_activity = { message: req.body.message, author: req.user.firstName + ' ' + req.user.lastName, timestamp: Date.now() };
-                            req.user.save(error => {
-                                if (error) {
-                                    res.status(500).json({ message: "Error at adding new message to current user " + error })
+                            req.conversation.messages.push({ author: req.user._id, message: req.body.message, timestamp: Date.now() });
+                            req.conversation.unseen = currentFriend._id;
+                            req.conversation.save(e => {
+                                if (e) {
+                                    res.status(500).json({ message: "Error at adding new message!" } + e)
                                 } else {
 
-                                    req.conversation.messages.push({ author: req.user._id, message: req.body.message, timestamp: Date.now() });
-                                    req.conversation.save(e => {
-                                        if (e) {
-                                            res.status(500).json({ message: "Error at adding new message!" } + e)
-                                        } else {
-
-                                            res.status(200).json({ message: "Message added!" })
-                                        }
-                                    })
+                                    res.status(200).json({ message: "Message added!" })
                                 }
                             })
                         }
@@ -55,6 +51,22 @@ const add_message = (req, res) => {
     }
 }
 
+const send_seen_event = (req, res) => {
+    var isParticipant = req.conversation.participants.includes(req.user._id);
+    if(isParticipant && req.conversation.unseen.equals(req.user._id)) {
+
+        req.conversation.unseen = null;
+        req.conversation.save(err => {
+            if(err) {
+                res.status(500).json({message: "Error at sending seen event " + err})
+            } else {
+                res.status(200).json({message: "Successfully sent seen event!"})
+            }
+        })
+    } else {
+        res.status(403).json({message: "You can't send seen event to this conversation!"})
+    }
+}
 
 const extract_conversation = (req, res, next) => {
     if (!req.body.conversation_id) {
@@ -82,5 +94,6 @@ const extract_conversation = (req, res, next) => {
 module.exports = {
     get_conversation,
     extract_conversation,
-    add_message
+    add_message,
+    send_seen_event
 }

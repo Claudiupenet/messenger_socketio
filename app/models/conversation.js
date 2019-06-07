@@ -4,11 +4,10 @@ var ObjectId = mongoose.Schema.Types.ObjectId;
 
 var ConversationSchema = new mongoose.Schema({
 	participants: [{type: mongoose.Schema.Types.ObjectId, ref: 'User'}],
+	unseen: {type: mongoose.Schema.Types.ObjectId, ref: 'User'},
 	messages: [{author: {type: mongoose.Schema.Types.ObjectId, ref: 'User'}, message: String, timestamp: Date }]
 }, {
-		versionKey: false,
-		timestamps: {createdAt: false}
-		
+		versionKey: false,		
 	})
 		
 var Conversation = mongoose.model("Conversation", ConversationSchema);

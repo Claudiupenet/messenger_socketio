@@ -17,7 +17,6 @@ router.get('/user/get_my_data', User_controller.get_my_data);
 router.get('/user/test/', User_controller.test);
 router.post('/user/send_friend_request', User_controller.send_friend_request);
 router.post('/user/confirm_friend_request', User_controller.confirm_friend_request);
-router.post('/user/send_seen_event', User_controller.send_seen_event);
 router.get('/user/get_friends_list', User_controller.get_friends_list);
 router.get('/user/get_conversations_list', User_controller.get_conversations_list)
 router.get('/user/get_friends_requests', User_controller.get_friends_requests);
@@ -25,5 +24,6 @@ router.get('/user/get_friends_suggestions', User_controller.get_friends_suggesti
 router.use('/user/conversations', Conversation_controller.extract_conversation);
 router.get('/user/conversations/get_conversation', Conversation_controller.get_conversation);
 router.post('/user/conversations/add_message', Conversation_controller.add_message);
+router.post('/user/conversation/send_seen_event', Conversation_controller.send_seen_event);
 
 module.exports = router;

@@ -25,15 +25,14 @@ var UserSchema = new Schema({
 	phone: { type: String, trim: true },
 	age: { type: Number, min: 16, max: 120 },
 	sex: { type: String, enum: ["Male", "Female", null], trim: true },
+	newActivity: [{type: Schema.Types.ObjectId, ref: 'Conversation', select: false}],
 	friends: [	{friend: {type: Schema.Types.ObjectId, ref: 'User'},
 				status: Number,
 				_id: false,
-				conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'},
-				last_activity:  Date
-			}	]
+				conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'}
+				}	]
 }, {
-		versionKey: false,
-		timestamps: true
+		versionKey: false
 	})
 
 	
