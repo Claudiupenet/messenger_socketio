@@ -24,10 +24,11 @@ const add_message = (req, res) => {
                 if (error) {
                     res.status(500).json({ message: "Database error at retrieving friend " + error })
                 } else {
-                   if(currentFriend.newActivity.includes(req.conversation._id)) {
-                       currentFriend.newActivity =  currentFriend.newActivity.filter(x => !x.equals(req.conversation._id))
+                    var friendship = currentFriend.friends.find(friend => friend.friend.equals(req.user._id));
+                   if(currentFriend.newActivity.includes(friendship._id)) {
+                       currentFriend.newActivity =  currentFriend.newActivity.filter(x => !x.equals(friendship._id))
                     }
-                    currentFriend.newActivity.push(req.conversation._id);
+                    currentFriend.newActivity.push(friendship._id);
 
                     currentFriend.save((err) => {
                         if (error) {

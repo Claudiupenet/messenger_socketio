@@ -73,14 +73,18 @@ const send_friend_request = (req, res) => {
 			} else {
 
 				if(friendWannaBe.friends.find(friend => friend.friend.equals(req.user._id)) === undefined) {
-					var conversation = new Conversation({participants: [req.user._id, friendWannaBe._id], unseen: friendWannaBe._id});
+					var conversation = new Conversation({participants: [req.user._id, friendWannaBe._id], 
+															unseen: friendWannaBe._id, 
+															messages: [{author: req.user._id, 
+																		message: req.user.firstName + ' ' + req.user.lastName + ' sent a friend request', 
+																		timestamp: Date.now()}]});
 					conversation.save((error, callback) => {
 						if(error) {
 							res.status(500).json({message: "Error at saving convesation"})
 						} else {
 
 							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id});
-							friendWannaBe.newActivity.push(callback._id)
+							friendWannaBe.newActivity.push(friendWannaBe.friends[friendWannaBe.friends.length -1].id)
 							friendWannaBe.save((e) => {
 								if(e) {
 									res.status(500).json({message: "Error at adding friend request " + e})
@@ -128,8 +132,12 @@ const confirm_friend_request = (req, res) => {
 					if(req.body.answer === true) {
 
 						user.status = 0;
-						newFriend.newActivity.push(user.conversation);
-						Conversation.findByIdAndUpdate(user.conversation, {unseen: newFriend._id}, (err) => {
+						newFriend.newActivity.push(user._id);
+						Conversation.findByIdAndUpdate(user.conversation, 
+							{"$set": {unseen: newFriend._id}, 
+							"$push": {messages: {author: req.user._id, 
+												message: req.user.firstName + ' ' + req.user.lastName + ' has accepted friend request!', 
+												timestamp: Date.now()}}} , (err) => {
 							if(err) {
 								res.status(500).json({message: "Error at updating conversation unseen " + err})
 							}
@@ -189,7 +197,7 @@ const get_friends_list = (req, res) => {
 const get_conversations_list = (req, res) => {
 	User.findById(req.user._id)
 	.populate({path: "friends.friend", select: "firstName lastName picture"})
-	.populate('friends.conversation', 'messages updatedAt')
+	.populate('friends.conversation', 'messages')
 	.lean()
 	.exec((err, currentUser) => {
 		if(err) {
@@ -197,14 +205,28 @@ const get_conversations_list = (req, res) => {
 		} else if(currentUser === null) {
 			res.status(404).json({message: "Missing user. Bad token?"})
 		} else {
-				currentUser.friends.map(friend => {
+				var friends = currentUser.friends.map(friend => {
 					var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
 					delete friend.conversation.messages;
 					friend.conversation.last_message = last_message;
 					return friend;
 				})
+				if(friends.length > 1) {
+					friends.sort((a, b) => {
 
-				res.status(200).json({message: "Successfully retrieved conversations list!", conversations: currentUser.friends})
+						return a.conversation.last_message.timestamp > b.conversation.last_message.timestamp ? -1 : 
+								a.conversation.last_message.timestamp < b.conversation.last_message.timestamp ? 1 : 0;
+					})
+				}
+				req.user.newActivity = [];
+				req.user.save(e => {
+					if(e) {
+						res.status(500).json({message: "Error at reading new activity " + e})
+					} else {
+						
+						res.status(200).json({message: "Successfully retrieved conversations list!", conversations: friends})
+					}
+				})
 		}
 	})
 }
@@ -235,11 +257,30 @@ const get_friends_suggestions = (req, res) => {
 
 }
 
+// de optimizat - acum trimite cate un nou eveniment la fiecare cerere
 const check_activity = (req, res) => {
-	if(req.newActivity.length > 0) {
-		res.status(200).json({message: "New activity!"})
+	if(req.user.newActivity.length > 0) {
+
+		var myFriendship = req.user.friends.id(req.user.newActivity[0]).toObject();
+		Conversation.findById(myFriendship.conversation, 'messages')
+		.lean()
+		.exec((error, conversation) => {
+			if(error) {
+				res.status(500).json({message: "Error at geting conversation from newActivity " + error})
+			} else {
+				var last_message = conversation.messages[conversation.messages.length -1];
+				myFriendship.conversation = conversation;
+				delete myFriendship.conversation.messages;
+				myFriendship.conversation.last_message = last_message;
+				req.user.newActivity.shift();
+				req.user.save();
+				res.status(200).json({message: "New activity!", conversations: myFriendship})
+			}
+		})
+
+
 	} else {
-		res.status(200).json({message: "No new activity!"})
+		res.sendStatus(204);
 	}
 }
 
@@ -277,6 +318,9 @@ const authMiddleware = (req, res, next) => {
 }
 
 const test = (req, res) => {
+	req.user.friends.push({friend: "5cfab87b725f8e1104752dcd", status: 6, conversation: "5cfac3af2591c82048c8d8ff"})
+	var aidi = req.user.friends[req.user.friends.length -1].id;
+	console.log(aidi)
 	res.status(200).json(req.user)
 }
 

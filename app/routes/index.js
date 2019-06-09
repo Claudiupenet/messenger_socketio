@@ -12,6 +12,7 @@ router.post("/register", User_controller.register);
 router.post("/login", User_controller.login);
 router.use("/user", User_controller.authMiddleware);
 router.use("/user", User_controller.extractDataMiddleware);
+router.get('/user/check_activity', User_controller.check_activity);
 router.get('/user/get_my_data', User_controller.get_my_data);
 //router.get('/user/test/:test', User_controller.test);
 router.get('/user/test/', User_controller.test);

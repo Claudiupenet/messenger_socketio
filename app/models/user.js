@@ -10,6 +10,8 @@ mongoose.connect(CONFIG.DB_ADDRESS, { useNewUrlParser: true })
 	.catch(err => {
 		console.log(err);
 	})
+mongoose.set('useCreateIndex', true);
+
 //Se extrage contructorul de schema
 var Schema = mongoose.Schema;
 
@@ -28,7 +30,6 @@ var UserSchema = new Schema({
 	newActivity: [{type: Schema.Types.ObjectId, ref: 'Conversation', select: false}],
 	friends: [	{friend: {type: Schema.Types.ObjectId, ref: 'User'},
 				status: Number,
-				_id: false,
 				conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'}
 				}	]
 }, {
