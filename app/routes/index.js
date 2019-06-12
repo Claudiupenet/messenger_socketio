@@ -12,6 +12,7 @@ router.post("/register", User_controller.register);
 router.post("/login", User_controller.login);
 router.use("/user", User_controller.authMiddleware);
 router.use("/user", User_controller.extractDataMiddleware);
+router.get("/user/login_using_token", User_controller.login_using_token);
 router.get('/user/check_activity', User_controller.check_activity);
 router.get('/user/get_my_data', User_controller.get_my_data);
 //router.get('/user/test/:test', User_controller.test);
@@ -25,6 +26,6 @@ router.get('/user/get_friends_suggestions', User_controller.get_friends_suggesti
 router.use('/user/conversations', Conversation_controller.extract_conversation);
 router.get('/user/conversations/get_conversation', Conversation_controller.get_conversation);
 router.post('/user/conversations/add_message', Conversation_controller.add_message);
-router.post('/user/conversation/send_seen_event', Conversation_controller.send_seen_event);
+router.post('/user/conversations/send_seen_event', Conversation_controller.send_seen_event);
 
 module.exports = router;

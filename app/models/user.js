@@ -18,9 +18,9 @@ var Schema = mongoose.Schema;
 
 //Se creeaza schema utilizatorului cu toate constrangerile necesare
 var UserSchema = new Schema({
-	firstName: { type: String, required: true, trim: true },
-	lastName: {type: String, required: true, trim: true },
 	email: { type: String, required: true, unique: true, trim: true },
+	firstName: { type: String, required: true, trim: true},
+	lastName: {type: String, required: true, trim: true },
 	password: { type: String, required: true, trim: true, select: false },
 	description: { type: String },
 	picture: { type: String, trim: true },
@@ -28,6 +28,7 @@ var UserSchema = new Schema({
 	age: { type: Number, min: 16, max: 120 },
 	sex: { type: String, enum: ["Male", "Female", null], trim: true },
 	newActivity: [{type: Schema.Types.ObjectId, ref: 'Conversation', select: false}],
+	isOnline: {type: Boolean, default: false},
 	friends: [	{friend: {type: Schema.Types.ObjectId, ref: 'User'},
 				status: Number,
 				conversation: {type: Schema.Types.ObjectId, ref: 'Conversation'}

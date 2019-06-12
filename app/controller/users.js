@@ -22,7 +22,6 @@ const register = (req, res) => {
 			}
 		})
 	} else {
-		console.log(req.body)
 		res.status(422).json({ message: "Please provide all data for register process" })
 	}
 }
@@ -32,7 +31,7 @@ const login = (req, res) => {
 		User.findOne({
 			email: req.body.email,
 			password: req.body.password
-		})
+		}, "-newActivity -friends")
 			.then(result => {
 				if (result == null) {
 					res.status(401).json({ message: "Wrong combination" })
@@ -42,8 +41,9 @@ const login = (req, res) => {
 						exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
 					},
 						CONFIG.JWT_SECRET_KEY);
-
-					res.status(200).json({ token: TOKEN })
+					result.isOnline = true;
+					result.save();
+					res.status(200).json({ token: TOKEN, userData: result})
 				}
 			})
 	} else {
@@ -51,9 +51,14 @@ const login = (req, res) => {
 	}
 }
 
+const login_using_token = (req, res) => {
+	const { newActivity, friends, ...rest} = req.user;
+	res.status(200).json({message: "Successfully logged in using the token provided", userData: rest})
+}
+
 const get_my_data = (req, res) => {
 
-	res.status(200).json({ firstname: req.user.firstName, lastName: req.user.lastName, email: req.user.email, picture: req.user.picture})
+	res.status(200).json({ firstname: req.user.firstName, lastName: req.user.lastName, email: req.user.email, picture: req.user.picture, id: req.user._id})
 }
 
 // status: 0 = friend confirmed, 1 = received friend request, 2 = unconfirmed friend
@@ -159,23 +164,30 @@ const confirm_friend_request = (req, res) => {
 							}
 						});
 					} else {
-						var newFriends = newFriend.friends.filter(friend => !friend.friend.equals(req.user._id));
-						newFriend.friends = newFriends;
-						newFriend.save(e => {
-							if(e) {
-
-								res.status(500).json({message: "Error at removing friend request " + e})
+						Conversation.findByIdAndRemove(user.conversation, (err) => {
+							if(err) {
+								res.status(500).json({message: "Error at removing conversation when deleting friend request " + err})
 							} else {
-								var friendsNew = req.user.friends.filter(friend => !friend.friend.equals(newFriend._id));
-								req.user.friends = friendsNew;
-								req.user.save(e => {
+
+								var newFriends = newFriend.friends.filter(friend => !friend.friend.equals(req.user._id));
+								newFriend.friends = newFriends;
+								newFriend.save(e => {
 									if(e) {
+		
 										res.status(500).json({message: "Error at removing friend request " + e})
 									} else {
-										res.status(200).json({message: "Successfully removed friend request!"})
+										var friendsNew = req.user.friends.filter(friend => !friend.friend.equals(newFriend._id));
+										req.user.friends = friendsNew;
+										req.user.save(e => {
+											if(e) {
+												res.status(500).json({message: "Error at removing friend request " + e})
+											} else {
+												res.status(200).json({message: "Successfully removed friend request!"})
+											}
+										})
+		
 									}
 								})
-
 							}
 						})
 					}		
@@ -196,7 +208,7 @@ const get_friends_list = (req, res) => {
 
 const get_conversations_list = (req, res) => {
 	User.findById(req.user._id)
-	.populate({path: "friends.friend", select: "firstName lastName picture"})
+	.populate({path: "friends.friend", select: "firstName lastName picture isOnline"})
 	.populate('friends.conversation', 'messages')
 	.lean()
 	.exec((err, currentUser) => {
@@ -236,8 +248,10 @@ const get_friends_requests = (req, res) => {
 	var friends_requests = req.user.friends.filter( friend => friend.status === 1);
 	if(friends_requests.length === 0) {
 		res.status(200).json({message: "You have no friends requests!"})
+	} else {
+
+		res.status(200).json({message: "Successfully retrieved friends requests!", data: friends_requests})
 	}
-	res.status(200).json({message: "Successfully retrieved friends requests!", data: friends_requests})
 }
 
 const get_friends_suggestions = (req, res) => {
@@ -273,7 +287,12 @@ const check_activity = (req, res) => {
 				delete myFriendship.conversation.messages;
 				myFriendship.conversation.last_message = last_message;
 				req.user.newActivity.shift();
+				req.user.isOnline.status = true;
 				req.user.save();
+				var user = this.online_users.find(user => user._id.equals(req.user._id));
+				if(user) {
+					user.value += 1;
+				}
 				res.status(200).json({message: "New activity!", conversations: myFriendship})
 			}
 		})
@@ -287,7 +306,7 @@ const check_activity = (req, res) => {
 const extractDataMiddleware = (req, res, next) => {
 	if (req.token_payload.email) {
 		User.findOne({email: req.token_payload.email})
-		.populate({path: "friends.friend", select: "firstName lastName picture"})
+		.populate({path: "friends.friend", select: "firstName lastName picture isOnline.status"})
 		.exec((err, currentUser) => {
 			if(err) {
 				res.status(404).json({ message: "Error at retrieving user information " + err })
@@ -317,16 +336,48 @@ const authMiddleware = (req, res, next) => {
 	}
 }
 
+this.online_users = [];
+
+const check_online = () => {
+	User.find({isOnline: true}, "_id", (error, onlineUsers) => {
+		onlineUsers.map( user => {
+			if(!this.online_users.find( onlineUser => onlineUser._id.equals(user._id))) {
+
+				this.online_users.push({_id: user._id, value: 0})
+			}
+		})
+	})
+} 
+
+const isStillOnline = (online_users = this.online_users) => {
+	online_users.map(user => {
+		if(user.value < -4) {
+			User.findByIdAndUpdate(user._id, {'$set': {'isOnline': false}}, (error) => {
+				if(error) {
+					console.log("is error" + error)
+				} 
+			})
+			this.online_users = this.online_users.filter(filterUser => !user._id.equals(filterUser._id))
+		}  else {
+			user.value -= 1;
+		}
+		return user;
+	})
+
+}
+
+setInterval(check_online, 10000)
+setInterval(isStillOnline, 1000)
+
 const test = (req, res) => {
-	req.user.friends.push({friend: "5cfab87b725f8e1104752dcd", status: 6, conversation: "5cfac3af2591c82048c8d8ff"})
-	var aidi = req.user.friends[req.user.friends.length -1].id;
-	console.log(aidi)
-	res.status(200).json(req.user)
+
+	res.status(200).json(!this.online_users.find( user => user._id.equals(req.user._id)))
 }
 
 module.exports = {
 	register,
 	login,
+	login_using_token,
 	get_my_data,
 	authMiddleware,
 	extractDataMiddleware,

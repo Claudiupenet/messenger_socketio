@@ -53,7 +53,7 @@ const add_message = (req, res) => {
 }
 
 const send_seen_event = (req, res) => {
-    var isParticipant = req.conversation.participants.includes(req.user._id);
+    var isParticipant = req.conversation.participants.find( participant => participant._id.equals(req.user._id));
     if(isParticipant && req.conversation.unseen.equals(req.user._id)) {
 
         req.conversation.unseen = null;
