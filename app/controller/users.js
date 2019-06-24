@@ -275,9 +275,8 @@ const get_friends_suggestions = (req, res) => {
 // de optimizat - acum trimite cate un nou eveniment la fiecare cerere
 const check_activity = (req, res) => {
 	if(req.user.newActivity.length > 0) {
-
 		var myFriendship = req.user.friends.id(req.user.newActivity[0]).toObject();
-		Conversation.findById(myFriendship.conversation, 'messages')
+		Conversation.findById(myFriendship.conversation)
 		.lean()
 		.exec((error, conversation) => {
 			if(error) {
@@ -286,6 +285,7 @@ const check_activity = (req, res) => {
 				var last_message = conversation.messages[conversation.messages.length -1];
 				myFriendship.conversation = conversation;
 				delete myFriendship.conversation.messages;
+				delete myFriendship.conversation.participants;
 				myFriendship.conversation.last_message = last_message;
 				req.user.newActivity.shift();
 				req.user.isOnline.status = true;
@@ -294,7 +294,8 @@ const check_activity = (req, res) => {
 				if(user) {
 					user.value += 1;
 				}
-				res.status(200).json({message: "New activity!", conversations: myFriendship})
+				console.log(myFriendship)
+				res.status(200).json({message: "New activity!", conversation: myFriendship})
 			}
 		})
 
