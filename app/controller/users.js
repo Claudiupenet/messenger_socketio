@@ -43,16 +43,17 @@ const login = (req, res) => {
 						CONFIG.JWT_SECRET_KEY);
 					result.isOnline = true;
 					result.save();
-					res.status(200).json({ token: TOKEN, userData: result})
+					res.status(200).json({ message: "Successfully logged in using email and password!", token: TOKEN, userData: result})
 				}
 			})
 	} else {
-		res.status(422).json({ message: "Provide all data" })
+		res.status(422).json({ message: "Provide all data", data: req.body })
 	}
 }
 
 const login_using_token = (req, res) => {
-	const { newActivity, friends, ...rest} = req.user;
+	var currentUser = req.user.toObject();
+	const { newActivity, friends, ...rest} = currentUser;
 	res.status(200).json({message: "Successfully logged in using the token provided", userData: rest})
 }
 
@@ -209,7 +210,7 @@ const get_friends_list = (req, res) => {
 const get_conversations_list = (req, res) => {
 	User.findById(req.user._id)
 	.populate({path: "friends.friend", select: "firstName lastName picture isOnline"})
-	.populate('friends.conversation', 'messages')
+	.populate('friends.conversation', 'messages unseen')
 	.lean()
 	.exec((err, currentUser) => {
 		if(err) {
@@ -261,9 +262,9 @@ const get_friends_suggestions = (req, res) => {
 												{lastName: { $regex: "^" + req.query.search_word, $options: 'i'}}]}
 										
 										: {_id: {$nin: [...req.user.friends.map(x => x.friend), req.user._id]}};
-	User.find(search)
+	User.find(search, "-newActivity -friends")
 	.then(users => {
-		res.status(200).json({message: "Successfully got friends suggestions", data: users})
+		res.status(200).json({message: "Successfully got friends suggestions", friends_suggestions: users})
 	})
 	.catch(err => {
 		res.status(500).json({message: "Database error: " + err})
@@ -374,6 +375,10 @@ const test = (req, res) => {
 	res.status(200).json(!this.online_users.find( user => user._id.equals(req.user._id)))
 }
 
+const test_without_login = (req, res) => {
+	res.status(200).json("test")
+}
+
 module.exports = {
 	register,
 	login,
@@ -388,5 +393,6 @@ module.exports = {
 	get_friends_requests,
 	get_conversations_list,
 	check_activity,
-	test
+	test,
+	test_without_login
 }

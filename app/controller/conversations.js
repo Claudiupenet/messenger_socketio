@@ -2,12 +2,12 @@ const Conversation = require('../models/conversation');
 const User = require('../models/user');
 
 const get_conversation = (req, res) => {
-    if (req.conversation.participants.find(participant => participant._id.equals(req.user._id)) === undefined) {
-        
-        res.status(403).json({ message: "You cannot see others conversations!"})
-    } else {
-        res.status(200).json({ message: "Conversation retrieved successfully!", conversation: req.conversation })
-    }
+    
+    var conversation = req.conversation.toObject();
+    conversation.friend = conversation.participants.find(participant => !participant._id.equals(req.user._id));
+    delete conversation.participants;
+    
+    res.status(200).json({ message: "Conversation retrieved successfully!", conversation: conversation })
 }
 
 const add_message = (req, res) => {
@@ -40,8 +40,7 @@ const add_message = (req, res) => {
                                 if (e) {
                                     res.status(500).json({ message: "Error at adding new message!" } + e)
                                 } else {
-
-                                    res.status(200).json({ message: "Message added!" })
+                                    res.status(200).json({ message: "Message added!", newMessage: req.conversation.messages[req.conversation.messages.length -1] })
                                 }
                             })
                         }
@@ -70,11 +69,11 @@ const send_seen_event = (req, res) => {
 }
 
 const extract_conversation = (req, res, next) => {
-    if (!req.body.conversation_id) {
+    if (!req.headers['conversation_id']) {
         res.status(400).json({ message: "Please provide conversation_id!" })
     } else {
-        Conversation.findById(req.body.conversation_id)
-            .populate({ path: 'participants', select: 'firstName lastName email picture' })
+        Conversation.findById(req.headers['conversation_id'])
+            .populate({ path: 'participants', select: 'firstName lastName email picture description phone' })
             .exec((err, conversation) => {
                 if (err) {
                     res.status(500).json({ message: "Error at retrieving conversation " + err })
