@@ -1,4 +1,6 @@
 const JWT = require('jsonwebtoken');
+const bcrypt = require ('bcrypt');
+const nodemailer = require('nodemailer');
 
 const User = require('../models/user');
 const Conversation = require('../models/conversation');
@@ -6,19 +8,25 @@ const CONFIG = require("../config");
 
 const register = (req, res) => {
 	if (req.body && req.body.email && req.body.password && req.body.firstName && req.body.lastName) {
-		var newUser = new User({
-			firstName: req.body.firstName,
-			lastName: req.body.lastName,
-			email: req.body.email,
-			password: req.body.password
-		})
-
-		newUser.save((err, result) => {
-			if (err) {
-				console.log(err);
-				res.sendStatus(409);
+		bcrypt.hash(req.body.password, 10, (error, hashed_password) => {
+			if(error) {
+				res.status(500).json({message: "Error at hashing password"})
 			} else {
-				res.status(200).json({ message: "Registered with success" })
+				var newUser = new User({
+					firstName: req.body.firstName,
+					lastName: req.body.lastName,
+					email: req.body.email,
+					password: hashed_password
+				})
+		
+				newUser.save((err, result) => {
+					if (err) {
+						console.log(err);
+						res.sendStatus(409);
+					} else {
+						res.status(200).json({ message: "Registered with success" })
+					}
+				})
 			}
 		})
 	} else {
@@ -28,22 +36,26 @@ const register = (req, res) => {
 
 const login = (req, res) => {
 	if (req.body && req.body.email && req.body.password) {
-		User.findOne({
-			email: req.body.email,
-			password: req.body.password
-		}, "-newActivity -friends")
+		User.findOne({email: req.body.email}, "password email firstName lastName description picture phone sex age")
 			.then(result => {
 				if (result == null) {
-					res.status(401).json({ message: "Wrong combination" })
+					res.status(404).json({ message: "Email was not found" })
 				} else {
-					var TOKEN = JWT.sign({
-						email: req.body.email,
-						exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
-					},
-						CONFIG.JWT_SECRET_KEY);
-					result.isOnline = true;
-					result.save();
-					res.status(200).json({ message: "Successfully logged in using email and password!", token: TOKEN, userData: result})
+					bcrypt.compare(req.body.password, result.password, (error, success) => {
+						if(error) {
+							res.status(500).json({message: "Error at comparing password with hashed."});
+						} else if (success){
+
+							var TOKEN = JWT.sign({
+								email: req.body.email,
+								exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
+							},
+								CONFIG.JWT_SECRET_KEY);
+							res.status(200).json({ message: "Successfully logged in using email and password!", token: TOKEN, userData: result})
+						} else {
+							res.status(401).json({message: "Wrong password"})
+						}
+					})
 				}
 			})
 	} else {
@@ -57,9 +69,122 @@ const login_using_token = (req, res) => {
 	res.status(200).json({message: "Successfully logged in using the token provided", userData: rest})
 }
 
+const update_profile = ({body: {password, firstName, lastName, description, age, sex, phone, picture}, user } = req, res) => {
+	if(password !== '') {
+		user.password = bcrypt.hashSync(password, 10);
+	}
+	user.firstName = firstName;
+	user.lastName = lastName;
+	user.description = description;
+	if(age !== '') {
+		user.age = age
+	} else {
+		user.age = null;
+	}
+	if(sex !== '') {
+		user.sex = sex
+	} else {
+		user.sex = null;
+	}
+	user.phone = phone;
+	user.picture = picture;
+	user.save(err => {
+		if(err) {
+			console.log("Error at updating profile " + err)
+		} else {
+			const {friends, newActivity, ...rest} = user.toObject();
+			res.status(200).json({message: "Profile updated", user: rest})
+		}
+	})
+}
+
 const get_my_data = (req, res) => {
 
-	res.status(200).json({ firstname: req.user.firstName, lastName: req.user.lastName, email: req.user.email, picture: req.user.picture, id: req.user._id})
+	res.status(200).json({ firstName: req.user.firstName, lastName: req.user.lastName, email: req.user.email, picture: req.user.picture, id: req.user._id, age: req.user.age, sex: req.user.sex, description: req.user.description, phone: req.user.phone})
+}
+
+const forgot_password = (req, res) => {
+	if(!req.body.email) {
+		res.status(400).json({message: "Please provide email address"})
+	} else {
+		User.findOne({email: req.body.email},'password', (error, user) => {
+			if(error) {
+				res.status(500).json({message: "Db error at getting user by email " + error})
+			} else {
+				if(!user) {
+					res.status(404).json({message: "User not found"})
+				} else {
+					var smtpConfig = {
+						service: 'Gmail',
+						host: 'smtp.gmail.com',
+						port: 465,
+						secure: true,
+						auth: {
+							user: "claudiukambi@gmail.com",
+							pass: "Messenger#@!"
+						}
+					}
+					var token = JWT.sign({key: user.password, email: req.body.email}, CONFIG.JWT_SECRET_KEY);
+
+					var mailOption = {
+						from: "claudiukambi@gmail.com",
+						to: req.body.email,
+						subject: "Recover password token",
+						text: "Click on this link to reset your password",
+						html: "<p> <a href='http://localhost:3000/reset/"+token+"'> Click here to reset your password</a></p>"
+					}
+					var transporter = nodemailer.createTransport(smtpConfig);
+
+					transporter.sendMail(mailOption, (err, info) => {
+						if (err) {
+							res.status(500).json({message: "Error at sending email " + err});
+						} else {
+							res.status(200).json({message: "Email sent"})
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+const reset_password = (req, res) => {
+	if(!req.body.token || !req.body.password) {
+		res.status(404).json({message: "Missing token or password"})
+	} else {
+		JWT.verify(req.body.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
+			if(err) {
+				res.status(403).json({message: "Invalid token"})
+			} else {
+				User.findOne({email: payload.email}, 'password', (err, user) => {
+					if(err) {
+						res.status(500).json({message: "Error at finding user by email " + err})
+					} else if(!user) {
+						res.status(404).json({message: "User not found. Bad token?"})
+					} else {
+						if(payload.key === user.password) {
+							bcrypt.hash(req.body.password,10,(err, hashed_password) => {
+								if(err) {
+									res.status(500).json({message: "Error when updating password " + err})
+								} else {
+									user.password = hashed_password;
+									user.save((error) => {
+										if(err) {
+											res.status(500).json({message: "Error when updating password " + error})
+										} else {
+											res.status(200).json({message: "Password updated!"})
+										}
+									})
+								}
+							})
+						} else {
+							res.status(403).json({message: "Forbidden. Wrong key!"})
+						}
+					}
+				})
+			}
+		})
+	}
 }
 
 // status: 0 = friend confirmed, 1 = received friend request, 2 = unconfirmed friend
@@ -274,6 +399,13 @@ const get_friends_suggestions = (req, res) => {
 
 // de optimizat - acum trimite cate un nou eveniment la fiecare cerere
 const check_activity = (req, res) => {
+	req.user.isOnline = true;
+	var user = this.online_users.find(user => user._id.equals(req.user._id));
+	if(user) {
+		user.value += 1;
+	} else {
+		this.online_users.push({_id: req.user._id, value: 0})
+	}
 	if(req.user.newActivity.length > 0) {
 		var myFriendship = req.user.friends.id(req.user.newActivity[0]).toObject();
 		Conversation.findById(myFriendship.conversation)
@@ -288,19 +420,14 @@ const check_activity = (req, res) => {
 				delete myFriendship.conversation.participants;
 				myFriendship.conversation.last_message = last_message;
 				req.user.newActivity.shift();
-				req.user.isOnline.status = true;
-				req.user.save();
-				var user = this.online_users.find(user => user._id.equals(req.user._id));
-				if(user) {
-					user.value += 1;
-				}
-				console.log(myFriendship)
+				req.user.save()
 				res.status(200).json({message: "New activity!", conversation: myFriendship})
 			}
 		})
-
-
+		
+		
 	} else {
+		req.user.save();
 		res.sendStatus(204);
 	}
 }
@@ -342,6 +469,9 @@ this.online_users = [];
 
 const check_online = () => {
 	User.find({isOnline: true}, "_id", (error, onlineUsers) => {
+		if(error) {
+			console.log(error)
+		}
 		onlineUsers.map( user => {
 			if(!this.online_users.find( onlineUser => onlineUser._id.equals(user._id))) {
 
@@ -384,7 +514,10 @@ module.exports = {
 	register,
 	login,
 	login_using_token,
+	update_profile,
 	get_my_data,
+	forgot_password,
+	reset_password,
 	authMiddleware,
 	extractDataMiddleware,
 	send_friend_request,

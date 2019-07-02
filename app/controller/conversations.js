@@ -53,16 +53,20 @@ const add_message = (req, res) => {
 
 const send_seen_event = (req, res) => {
     var isParticipant = req.conversation.participants.find( participant => participant._id.equals(req.user._id));
-    if(isParticipant && req.conversation.unseen.equals(req.user._id)) {
-
-        req.conversation.unseen = null;
-        req.conversation.save(err => {
-            if(err) {
-                res.status(500).json({message: "Error at sending seen event " + err})
-            } else {
-                res.status(200).json({message: "Successfully sent seen event!"})
-            }
-        })
+    if(isParticipant) {
+        if(req.conversation.unseen && req.conversation.unseen.equals(req.user._id)) {
+    
+            req.conversation.unseen = null;
+            req.conversation.save(err => {
+                if(err) {
+                    res.status(500).json({message: "Error at sending seen event " + err})
+                } else {
+                    res.status(200).json({message: "Successfully sent seen event!"})
+                }
+            })
+        } else {
+            res.status(200).json({message: "Successfully sent seen event!"})
+        }
     } else {
         res.status(403).json({message: "You can't send seen event to this conversation!"})
     }
@@ -73,7 +77,7 @@ const extract_conversation = (req, res, next) => {
         res.status(400).json({ message: "Please provide conversation_id!" })
     } else {
         Conversation.findById(req.headers['conversation_id'])
-            .populate({ path: 'participants', select: 'firstName lastName email picture description phone' })
+            .populate({ path: 'participants', select: 'firstName lastName email picture description phone isOnline age sex' })
             .exec((err, conversation) => {
                 if (err) {
                     res.status(500).json({ message: "Error at retrieving conversation " + err })
