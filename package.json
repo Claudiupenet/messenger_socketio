@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon ./app/index.js",
+    "start": "node ./app/index.js",
     "dev": "concurrently \"nodemon ./app/index.js\" \"cd messengerFront && npm start\"",
     "heroku-postbuild": "cd messengerFront && npm install --only=dev && npm install && npm run build"
   },
