@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon ./app/index.js",
     "dev": "concurrently \"nodemon ./app/index.js\" \"cd messengerFront && npm start\"",
-    "heroku-postbuild": "cd messengerFront && npm install --only=dev && cd app && npm install && npm run build"
+    "heroku-postbuild": "cd messengerFront && npm install --only=dev && npm install && npm run build"
   },
   "author": "",
   "license": "ISC",
