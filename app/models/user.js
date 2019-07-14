@@ -1,9 +1,10 @@
 const mongoose = require('mongoose');
 const CONFIG = require('../config');
 var ObjectId = mongoose.Schema.Types.ObjectId;
+const mongo_uri = process.env.MONGODB_URI || CONFIG.DB_ADDRESS;
 
 //Se face conexiunea la baza de date cu mongoose
-mongoose.connect(CONFIG.DB_ADDRESS, { useNewUrlParser: true })
+mongoose.connect(mongo_uri, { useNewUrlParser: true })
 	.then(data => {
 		console.log("Connected to DB")
 	})

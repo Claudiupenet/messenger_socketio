@@ -1,6 +1,7 @@
 const JWT = require('jsonwebtoken');
 const bcrypt = require ('bcrypt');
 const nodemailer = require('nodemailer');
+const secret_key = process.env.SECRET || CONFIG.JWT_SECRET_KEY;
 
 const User = require('../models/user');
 const Conversation = require('../models/conversation');
@@ -79,7 +80,7 @@ module.exports = io => {
 									var TOKEN = JWT.sign({
 										email: data.email,
 										exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
-									},CONFIG.JWT_SECRET_KEY);
+									},secret_key);
 									socket.user = user;
 									const {friends, password, ...rest} = user.toObject();
 									socket.emit('login', {token: TOKEN, user: rest});
@@ -98,7 +99,7 @@ module.exports = io => {
 
 		socket.on('login_using_token', data => {
 			if(data.token) {
-				JWT.verify(data.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
+				JWT.verify(data.token, secret_key, (err, payload) => {
 								if (err) {
 									socket.emit('login_using_token', 'badtoken')
 								} else {
@@ -423,7 +424,7 @@ module.exports = io => {
 									pass: "Messenger#@!"
 								}
 							}
-							var token = JWT.sign({key: user.password, email: data}, CONFIG.JWT_SECRET_KEY);
+							var token = JWT.sign({key: user.password, email: data}, secret_key);
 		
 							var mailOption = {
 								from: "claudiukambi@gmail.com",
@@ -452,7 +453,7 @@ module.exports = io => {
 			if(!data.token || !data.password) {
 				socket.emit('reset_password', 'incomplete')
 			} else {
-				JWT.verify(data.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
+				JWT.verify(data.token, secret_key, (err, payload) => {
 					if(err) {
 						socket.emit('reset_password', 'badToken')
 					} else {

@@ -3,14 +3,23 @@ const http = require("http");
 const socketIo = require("socket.io");
 const cors = require('cors');
 const parser = require('body-parser');
+require("dotenv").config()
+
 
 const CONFIG = require('./config');
+const path = require("path")
+const port = process.env.PORT || CONFIG.PORT;
 
 const app = express();
 app.use(cors());
 app.use(parser.json())
+app.use(express.static(path.join(__dirname, "messengerFront", "build")));
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "messengerFront", "build", "index.html"));
+});
+
 const server = http.createServer(app);
-server.listen(CONFIG.PORT);
+server.listen(port);
 io = socketIo(server);
 
 require('./controller/users')(io);
