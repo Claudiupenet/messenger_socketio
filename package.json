@@ -6,8 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon ./app/index.js",
-    "dev": "concurrently \"nodemon ./app/index.js\" \"cd messengerFront && npm start\"",
-    "heroku-postbuild": "cd messengerFront && npm install --only=dev && npm install && npm run build"
+    "dev": "concurrently \"nodemon ./app/index.js\" \"cd client && npm start\"",
+    "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --prefix client && npm run build --prefix client"
   },
   "author": "",
   "license": "ISC",
