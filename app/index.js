@@ -1,16 +1,16 @@
-const express = require('express')
+const express = require('express');
+const http = require("http");
+const socketIo = require("socket.io");
 const cors = require('cors');
 const parser = require('body-parser');
 
-const CONFIG = require('./config')
-const routes = require('./routes/index')
+const CONFIG = require('./config');
 
-const app = express()
-
+const app = express();
 app.use(cors());
-
 app.use(parser.json())
+const server = http.createServer(app);
+server.listen(CONFIG.PORT);
+io = socketIo(server);
 
-app.use(routes);
-
-app.listen(CONFIG.PORT, () => console.log("Server stared on " + CONFIG.PORT))
+require('./controller/users')(io);

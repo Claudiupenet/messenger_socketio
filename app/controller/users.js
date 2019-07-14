@@ -6,527 +6,536 @@ const User = require('../models/user');
 const Conversation = require('../models/conversation');
 const CONFIG = require("../config");
 
-const register = (req, res) => {
-	if (req.body && req.body.email && req.body.password && req.body.firstName && req.body.lastName) {
-		bcrypt.hash(req.body.password, 10, (error, hashed_password) => {
-			if(error) {
-				res.status(500).json({message: "Error at hashing password"})
-			} else {
-				var newUser = new User({
-					firstName: req.body.firstName,
-					lastName: req.body.lastName,
-					email: req.body.email,
-					password: hashed_password
-				})
-		
-				newUser.save((err, result) => {
-					if (err) {
-						console.log(err);
-						res.sendStatus(409);
-					} else {
-						res.status(200).json({ message: "Registered with success" })
-					}
-				})
-			}
-		})
-	} else {
-		res.status(422).json({ message: "Please provide all data for register process" })
-	}
-}
+module.exports = io => {
 
-const login = (req, res) => {
-	if (req.body && req.body.email && req.body.password) {
-		User.findOne({email: req.body.email}, "password email firstName lastName description picture phone sex age")
-			.then(result => {
-				if (result == null) {
-					res.status(404).json({ message: "Email was not found" })
-				} else {
-					bcrypt.compare(req.body.password, result.password, (error, success) => {
-						if(error) {
-							res.status(500).json({message: "Error at comparing password with hashed."});
-						} else if (success){
+	var connected_users = [];
+	io.on('connection', socket => {
 
-							var TOKEN = JWT.sign({
-								email: req.body.email,
-								exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
-							},
-								CONFIG.JWT_SECRET_KEY);
-							res.status(200).json({ message: "Successfully logged in using email and password!", token: TOKEN, userData: result})
-						} else {
-							res.status(401).json({message: "Wrong password"})
-						}
-					})
+		socket.user = false;
+
+		new_activity = (participants, activity) => {
+
+			participants.map(participant => {
+				var isOnline = connected_users.find(user => user.user_id.equals(participant));
+				if(isOnline) {
+					io.to(isOnline.socket_id).emit('new_activity', activity)
 				}
 			})
-	} else {
-		res.status(422).json({ message: "Provide all data", data: req.body })
-	}
-}
-
-const login_using_token = (req, res) => {
-	var currentUser = req.user.toObject();
-	const { newActivity, friends, ...rest} = currentUser;
-	res.status(200).json({message: "Successfully logged in using the token provided", userData: rest})
-}
-
-const update_profile = ({body: {password, firstName, lastName, description, age, sex, phone, picture}, user } = req, res) => {
-	if(password !== '') {
-		user.password = bcrypt.hashSync(password, 10);
-	}
-	user.firstName = firstName;
-	user.lastName = lastName;
-	user.description = description;
-	if(age !== '') {
-		user.age = age
-	} else {
-		user.age = null;
-	}
-	if(sex !== '') {
-		user.sex = sex
-	} else {
-		user.sex = null;
-	}
-	user.phone = phone;
-	user.picture = picture;
-	user.save(err => {
-		if(err) {
-			console.log("Error at updating profile " + err)
-		} else {
-			const {friends, newActivity, ...rest} = user.toObject();
-			res.status(200).json({message: "Profile updated", user: rest})
 		}
-	})
-}
 
-const get_my_data = (req, res) => {
-
-	res.status(200).json({ firstName: req.user.firstName, lastName: req.user.lastName, email: req.user.email, picture: req.user.picture, id: req.user._id, age: req.user.age, sex: req.user.sex, description: req.user.description, phone: req.user.phone})
-}
-
-const forgot_password = (req, res) => {
-	if(!req.body.email) {
-		res.status(400).json({message: "Please provide email address"})
-	} else {
-		User.findOne({email: req.body.email},'password', (error, user) => {
-			if(error) {
-				res.status(500).json({message: "Db error at getting user by email " + error})
-			} else {
-				if(!user) {
-					res.status(404).json({message: "User not found"})
-				} else {
-					var smtpConfig = {
-						service: 'Gmail',
-						host: 'smtp.gmail.com',
-						port: 465,
-						secure: true,
-						auth: {
-							user: "claudiukambi@gmail.com",
-							pass: "Messenger#@!"
-						}
-					}
-					var token = JWT.sign({key: user.password, email: req.body.email}, CONFIG.JWT_SECRET_KEY);
-
-					var mailOption = {
-						from: "claudiukambi@gmail.com",
-						to: req.body.email,
-						subject: "Recover password token",
-						text: "Click on this link to reset your password",
-						html: "<p> <a href='http://localhost:3000/reset/"+token+"'> Click here to reset your password</a></p>"
-					}
-					var transporter = nodemailer.createTransport(smtpConfig);
-
-					transporter.sendMail(mailOption, (err, info) => {
-						if (err) {
-							res.status(500).json({message: "Error at sending email " + err});
-						} else {
-							res.status(200).json({message: "Email sent"})
-						}
-					})
-				}
-			}
-		})
-	}
-}
-
-const reset_password = (req, res) => {
-	if(!req.body.token || !req.body.password) {
-		res.status(404).json({message: "Missing token or password"})
-	} else {
-		JWT.verify(req.body.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
-			if(err) {
-				res.status(403).json({message: "Invalid token"})
-			} else {
-				User.findOne({email: payload.email}, 'password', (err, user) => {
+		socket.on('register', data => {
+			if (data && data.email && data.password && data.firstName && data.lastName) {
+				User.findOne({email: data.email}, (err, user) => {
 					if(err) {
-						res.status(500).json({message: "Error at finding user by email " + err})
-					} else if(!user) {
-						res.status(404).json({message: "User not found. Bad token?"})
+						console.log(err)
+						socket.emit('register', 'dberror');
+						return;
+					} else if(user) {
+						socket.emit('register', 'conflict')
+						return;
 					} else {
-						if(payload.key === user.password) {
-							bcrypt.hash(req.body.password,10,(err, hashed_password) => {
-								if(err) {
-									res.status(500).json({message: "Error when updating password " + err})
-								} else {
-									user.password = hashed_password;
-									user.save((error) => {
-										if(err) {
-											res.status(500).json({message: "Error when updating password " + error})
-										} else {
-											res.status(200).json({message: "Password updated!"})
-										}
-									})
-								}
-							})
-						} else {
-							res.status(403).json({message: "Forbidden. Wrong key!"})
-						}
-					}
-				})
-			}
-		})
-	}
-}
-
-// status: 0 = friend confirmed, 1 = received friend request, 2 = unconfirmed friend
-
-const send_friend_request = (req, res) => {
-	
-	if (!req.body.friend_id) {
-		res.status(400).json({ message: "Please provide friend_id!" })
-	} else if (req.user._id.equals(req.body.friend_id)) {
-		res.status(400).json({message: "You cannot send a friend request to yourself!"})
-	} else {
-		User.findById(req.body.friend_id, (error, friendWannaBe) => {
-			if(error) {
-				res.status(500).json({message: "Database error " + err})
-			} else if (friendWannaBe === null) {
-				res.status(404).json({message: "User not found! Wrond friend_id?"})
-			} else {
-
-				if(friendWannaBe.friends.find(friend => friend.friend.equals(req.user._id)) === undefined) {
-					var conversation = new Conversation({participants: [req.user._id, friendWannaBe._id], 
-															unseen: friendWannaBe._id, 
-															messages: [{author: req.user._id, 
-																		message: req.user.firstName + ' ' + req.user.lastName + ' sent a friend request', 
-																		timestamp: Date.now()}]});
-					conversation.save((error, callback) => {
-						if(error) {
-							res.status(500).json({message: "Error at saving convesation"})
-						} else {
-
-							friendWannaBe.friends.push({friend: req.user._id, status: 1, conversation: callback._id});
-							friendWannaBe.newActivity.push(friendWannaBe.friends[friendWannaBe.friends.length -1].id)
-							friendWannaBe.save((e) => {
-								if(e) {
-									res.status(500).json({message: "Error at adding friend request " + e})
-								} else {
-
-									if(req.user.friends.find(friend => friend.friend.equals(friendWannaBe._id)) === undefined) {
-										req.user.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id})
-										req.user.save()
-										res.status(200).json({message: "Friend request sent!"})
-									} else {
-										res.status(409).json({message: "Already friend or request sent/received!"})
-									}
-
-								}
-							})
-
-						}
-					})
-				} else {
-					res.status(409).json({message: "Already friend or request sent/received!"})
-				}
-			}
-
-		})
-
-	}
-}
-
-const confirm_friend_request = (req, res) => {
-
-	if (!req.body.friend_id || (req.body.answer === undefined)) {
-		res.status(400).json({ message: "Please provide friend_id and answer!" })
-	} else if(req.user._id.equals(req.body.friend_id)) {
-		res.status(400).json({message: "You cannot confirm a friend request you have sent!"})
-	} else {
-
-		User.findById(req.body.friend_id, (error, newFriend) => {
-			if(error) {
-				res.status(500).json({message: "Database error " + err})
-			} else if(newFriend === null) {
-				res.status(404).json({message: "User not fond. Wrong friend_id? "})
-			} else {
-				var user = newFriend.friends.find(friend => friend.friend.equals(req.user._id));
-				if(user && user.status === 2) {
-					if(req.body.answer === true) {
-
-						user.status = 0;
-						newFriend.newActivity.push(user._id);
-						Conversation.findByIdAndUpdate(user.conversation, 
-							{"$set": {unseen: newFriend._id}, 
-							"$push": {messages: {author: req.user._id, 
-												message: req.user.firstName + ' ' + req.user.lastName + ' has accepted friend request!', 
-												timestamp: Date.now()}}} , (err) => {
-							if(err) {
-								res.status(500).json({message: "Error at updating conversation unseen " + err})
-							}
-						})
-						newFriend.save((e) => {
-							if(e) {
-								res.status(500).json({message: "Error at confirming friend request " + e})
+						bcrypt.hash(data.password, 10, (error, hashed_password) => {
+							if(error) {
+								console.log(error)
+								socket.emit('register', 'hashing error');
+								return;
 							} else {
-								var user2 = req.user.friends.find(friend2 => friend2.friend.equals(newFriend._id));
-								if(user2) {
-		
-									user2.status = 0;
-									req.user.save();
-									res.status(200).json({message: "Friend request confirmed!"})
-								} else {
-									res.status(404).json({message: "This user is not in your friends requests list!"})
-								}
-
-							}
-						});
-					} else {
-						Conversation.findByIdAndRemove(user.conversation, (err) => {
-							if(err) {
-								res.status(500).json({message: "Error at removing conversation when deleting friend request " + err})
-							} else {
-
-								var newFriends = newFriend.friends.filter(friend => !friend.friend.equals(req.user._id));
-								newFriend.friends = newFriends;
-								newFriend.save(e => {
-									if(e) {
-		
-										res.status(500).json({message: "Error at removing friend request " + e})
+								var newUser = new User({
+									firstName: data.firstName,
+									lastName: data.lastName,
+									email: data.email,
+									password: hashed_password
+								})
+						
+								newUser.save((err, result) => {
+									if (err) {
+										console.log(err);
+										socket.emit('register', 'dberror');
 									} else {
-										var friendsNew = req.user.friends.filter(friend => !friend.friend.equals(newFriend._id));
-										req.user.friends = friendsNew;
-										req.user.save(e => {
-											if(e) {
-												res.status(500).json({message: "Error at removing friend request " + e})
-											} else {
-												res.status(200).json({message: "Successfully removed friend request!"})
-											}
-										})
-		
+										socket.emit('register', 'ok');
 									}
 								})
 							}
 						})
-					}		
-						
-				} else {
-					res.status(404).json({message: "Your are not in his friends requests list or you have already confirmed!"})
-				}
-			}
-		})
-		
-	}
-}
-
-const get_friends_list = (req, res) => {
-	
-	res.status(200).json({message: "Successfully retrieved friends list!", friends: req.user.friends})
-}
-
-const get_conversations_list = (req, res) => {
-	User.findById(req.user._id)
-	.populate({path: "friends.friend", select: "firstName lastName picture isOnline"})
-	.populate('friends.conversation', 'messages unseen')
-	.lean()
-	.exec((err, currentUser) => {
-		if(err) {
-			res.status(500).json({ message: "Error at retrieving conversations list " + err })
-		} else if(currentUser === null) {
-			res.status(404).json({message: "Missing user. Bad token?"})
-		} else {
-				var friends = currentUser.friends.map(friend => {
-					var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
-					delete friend.conversation.messages;
-					friend.conversation.last_message = last_message;
-					return friend;
-				})
-				if(friends.length > 1) {
-					friends.sort((a, b) => {
-
-						return a.conversation.last_message.timestamp > b.conversation.last_message.timestamp ? -1 : 
-								a.conversation.last_message.timestamp < b.conversation.last_message.timestamp ? 1 : 0;
-					})
-				}
-				req.user.newActivity = [];
-				req.user.save(e => {
-					if(e) {
-						res.status(500).json({message: "Error at reading new activity " + e})
-					} else {
-						
-						res.status(200).json({message: "Successfully retrieved conversations list!", conversations: friends})
 					}
 				})
-		}
-	})
-}
+			} else {
+				socket.emit('register', 'incomplete')
+			}
+		})
 
-const get_friends_requests = (req, res) => {
-	
-	var friends_requests = req.user.friends.filter( friend => friend.status === 1);
-	if(friends_requests.length === 0) {
-		res.status(200).json({message: "You have no friends requests!"})
-	} else {
+		socket.on('login', data => {
+			if (data && data.email && data.password) {
+				User.findOne({email: data.email})
+					.then(user => {
+						if (user == null) {
+							socket.emit('login', 'notfound');
+						} else {
+							bcrypt.compare(data.password, user.password, (error, success) => {
+								if(error) {
+									socket.emit('login', 'bcrypterror');
+								} else if (success){
+		
+									var TOKEN = JWT.sign({
+										email: data.email,
+										exp: Math.floor(Date.now() / 1000) + CONFIG.JWT_EXPIRE_TIME
+									},CONFIG.JWT_SECRET_KEY);
+									socket.user = user;
+									const {friends, password, ...rest} = user.toObject();
+									socket.emit('login', {token: TOKEN, user: rest});
+									connected_users.push({socket_id: socket.id, user_id: user._id})
+									socket.broadcast.emit('online_status', {user_id: user._id, status: true})
+								} else {
+									socket.emit('login', 'wrongpassword');
+								}
+							})
+						}
+					})
+			} else {
+				socket.emit('login', 'incomplete');
+			}
+		})
 
-		res.status(200).json({message: "Successfully retrieved friends requests!", data: friends_requests})
-	}
-}
+		socket.on('login_using_token', data => {
+			if(data.token) {
+				JWT.verify(data.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
+								if (err) {
+									socket.emit('login_using_token', 'badtoken')
+								} else {
+									User.findOne({email: payload.email})
+									.then(user => {
+										if(user === null) {
+											socket.emit('login_using_token', 'badtoken')
+										} else {
+											socket.user = user;
+											const {friends, password, ...rest} = user.toObject();
+											socket.emit('login_using_token', {user: rest})
+											connected_users.push({socket_id: socket.id, user_id: user._id})
+											socket.broadcast.emit('online_status', {user_id: user._id, status: true})
+										}
+									})
+								}
+							})
+			}
+		})
 
-const get_friends_suggestions = (req, res) => {
+		socket.on('get_conversations_list', () => {
 
-	var search = req.query.search_word ? {_id: {$nin: [...req.user.friends.map(x => x.friend), req.user._id]},
-											$or: [{firstName: { $regex: "^" + req.query.search_word, $options: 'i'}},
-												{lastName: { $regex: "^" + req.query.search_word, $options: 'i'}}]}
+			if(socket.user) {
+				User.findById(socket.user._id)
+				.populate({path: "friends.friend", select: "firstName lastName picture isOnline"})
+				.populate('friends.conversation', 'messages unseen')
+				.lean()
+				.exec((err, currentUser) => {
+					if(err) {
+						socket.emit('get_conversations_list', 'dberror')
+					} else if(currentUser === null) {
+						socket.emit('get_conversations_list', 'error')
+					} else {
+						var friends = currentUser.friends.map(friend => {
+							var last_message = friend.conversation.messages[friend.conversation.messages.length -1];
+							friend.friend.isOnline = connected_users.some(user => user.user_id.equals(friend.friend._id));
+							delete friend.conversation.messages;
+							friend.conversation.last_message = last_message;
+							return friend;
+						})
+						if(friends.length > 1) {
+							friends.sort((a, b) => {
+
+								return a.conversation.last_message.timestamp > b.conversation.last_message.timestamp ? -1 : 
+										a.conversation.last_message.timestamp < b.conversation.last_message.timestamp ? 1 : 0;
+							})
+						}
+						
+						socket.emit('get_conversations_list', {conversations: friends})
+
+					}
+				})
+			}
+		})
+
+		socket.on('get_friends_suggestions', (data) => {
+			if(socket.user) {
+				User.findById(socket.user._id, (err, currentUser) => {
+					if(err) {
+						socket.emit('get_friends_suggestions', 'dberror')
+					} else {
+						var search = data !== '' ? {_id: {$nin: [...currentUser.friends.map(x => x.friend), currentUser._id]},
+																$or: [{firstName: { $regex: "^" + data, $options: 'i'}},
+																	{lastName: { $regex: "^" + data, $options: 'i'}}]}
+															
+															: {_id: {$nin: [...currentUser.friends.map(x => x.friend), currentUser._id]}};
+						User.find(search, "-newActivity -friends")
+						.then(users => {
+							socket.emit('get_friends_suggestions', {friends_suggestions: users})
+						})
+						.catch(err => {
+							socket.emit('get_friends_suggestions', 'dberror')
+						})
+					}
+				})
+			}
+		})
+
+		socket.on('send_friend_request', data => {
+			if(!socket.user) {
+				socket.emit('send_friend_request', 'forbidden');
+				return;
+			}
+			if (!data.friend_id) {
+					socket.emit('send_friend_request', 'incomplete')
+				} else if (socket.user._id.equals(data.friend_id)) {
+					socket.emit('send_friend_request', 'You cannot send a friend request to yourself!')
+				} else {
+					User.findById(data.friend_id, (error, friendWannaBe) => {
+						if(error) {
+							socket.emit('send_friend_request', 'dberror')
+						} else if (friendWannaBe === null) {
+							socket.emit('send_friend_request', 'badId')
+						} else {
+			
+							if(friendWannaBe.friends.find(friend => friend.friend.equals(socket.user._id)) === undefined) {
+								var conversation = new Conversation({participants: [socket.user._id, friendWannaBe._id], 
+																		unseen: friendWannaBe._id, 
+																		messages: [{author: socket.user._id, 
+																					message: socket.user.firstName + ' ' + socket.user.lastName + ' sent a friend request', 
+																					timestamp: Date.now()}]});
+								conversation.save((error, callback) => {
+									if(error) {
+										socket.emit('send_friend_request', 'dberror')
+									} else {
+			
+										friendWannaBe.friends.push({friend: socket.user._id, status: 1, conversation: callback._id});
+										friendWannaBe.save((e) => {
+											if(e) {
+												socket.emit('send_friend_request', 'dberror')
+											} else {
+												if(socket.user.friends.find(friend => friend.friend.equals(friendWannaBe._id)) === undefined) {
+													socket.user.friends.push({friend: friendWannaBe._id, status: 2, conversation: callback._id})
+													socket.user.save()
+													socket.emit('send_friend_request', {id: data.friend_id, message: 'success'})
+												} else {
+													socket.emit('send_friend_request', 'conflict')
+												}
+			
+											}
+										})
+			
+									}
+								})
+							} else {
+								socket.emit('send_friend_request', 'conflict')
+							}
+						}
+			
+					})
+			
+				}
+		})
+
+		socket.on('confirm_friend_request', data => {
+			if(socket.user) {
+
+				if (!data.friend_id || (data.answer === undefined)) {
+					socket.emit('confirm_friend_request', 'incomplete')
+					} else if(socket.user._id.equals(data.friend_id)) {
+						socket.emit('confirm_friend_request', 'forbidden')
+					} else {
+				
+						User.findById(data.friend_id, (error, newFriend) => {
+							if(error) {
+								socket.emit('confirm_friend_request', 'dberror')
+							} else if(newFriend === null) {
+								socket.emit('confirm_friend_request', 'badId')
+							} else {
+								var user = newFriend.friends.find(friend => friend.friend.equals(socket.user._id));
+								if(user && user.status === 2) {
+									if(data.answer === true) {
+				
+										user.status = 0;
+										Conversation.findByIdAndUpdate(user.conversation, 
+											{"$set": {unseen: newFriend._id}, 
+											"$push": {messages: {author: socket.user._id, 
+																message: socket.user.firstName + ' ' + socket.user.lastName + ' has accepted friend request!', 
+																timestamp: Date.now()}}} , (err) => {
+											if(err) {
+												socket.emit('confirm_friend_request', 'dberror')
+											}
+										})
+										newFriend.save((e) => {
+											if(e) {
+												socket.emit('confirm_friend_request', 'dberror')
+											} else {
+												var user2 = socket.user.friends.find(friend2 => friend2.friend.equals(newFriend._id));
+												if(user2) {
+						
+													user2.status = 0;
+													socket.user.save();
+													socket.emit('confirm_friend_request', 'success')
+												} else {
+													socket.emit('confirm_friend_request', 'forbidden')
+												}
+				
+											}
+										});
+									} else {
+										Conversation.findByIdAndRemove(user.conversation, (err) => {
+											if(err) {
+												socket.emit('confirm_friend_request', 'dberror')
+											} else {
+				
+												var newFriends = newFriend.friends.filter(friend => !friend.friend.equals(socket.user._id));
+												newFriend.friends = newFriends;
+												newFriend.save(e => {
+													if(e) {
+						
+														socket.emit('confirm_friend_request', 'dberror')
+													} else {
+														var friendsNew = socket.user.friends.filter(friend => !friend.friend.equals(newFriend._id));
+														socket.user.friends = friendsNew;
+														socket.user.save(e => {
+															if(e) {
+																socket.emit('confirm_friend_request', 'dberror')
+															} else {
+																socket.emit('confirm_friend_request', 'success')
+															}
+														})
+						
+													}
+												})
+											}
+										})
+									}		
 										
-										: {_id: {$nin: [...req.user.friends.map(x => x.friend), req.user._id]}};
-	User.find(search, "-newActivity -friends")
-	.then(users => {
-		res.status(200).json({message: "Successfully got friends suggestions", friends_suggestions: users})
-	})
-	.catch(err => {
-		res.status(500).json({message: "Database error: " + err})
-	})
-
-}
-
-// de optimizat - acum trimite cate un nou eveniment la fiecare cerere
-const check_activity = (req, res) => {
-	req.user.isOnline = true;
-	var user = this.online_users.find(user => user._id.equals(req.user._id));
-	if(user) {
-		user.value += 1;
-	} else {
-		this.online_users.push({_id: req.user._id, value: 0})
-	}
-	if(req.user.newActivity.length > 0) {
-		var myFriendship = req.user.friends.id(req.user.newActivity[0]).toObject();
-		Conversation.findById(myFriendship.conversation)
-		.lean()
-		.exec((error, conversation) => {
-			if(error) {
-				res.status(500).json({message: "Error at geting conversation from newActivity " + error})
-			} else {
-				var last_message = conversation.messages[conversation.messages.length -1];
-				myFriendship.conversation = conversation;
-				delete myFriendship.conversation.messages;
-				delete myFriendship.conversation.participants;
-				myFriendship.conversation.last_message = last_message;
-				req.user.newActivity.shift();
-				req.user.save()
-				res.status(200).json({message: "New activity!", conversation: myFriendship})
+								} else {
+									socket.emit('confirm_friend_request', 'forbidden')
+								}
+							}
+						})
+						
+					}
 			}
 		})
-		
-		
-	} else {
-		req.user.save();
-		res.sendStatus(204);
-	}
-}
 
-const extractDataMiddleware = (req, res, next) => {
-	if (req.token_payload.email) {
-		User.findOne({email: req.token_payload.email})
-		.populate({path: "friends.friend", select: "firstName lastName picture isOnline.status"})
-		.exec((err, currentUser) => {
-			if(err) {
-				res.status(404).json({ message: "Error at retrieving user information " + err })
-			} else if(currentUser === null) {
-				res.status(404).json({message: "Missing user. Bad token?"})
-			} else {
-
-				req.user = currentUser;
-				next();
+		socket.on('get_conversation', data => {
+			if(socket.user) {
+				Conversation.findById(data)
+				.populate({path: "participants", select: "firstName lastName email age sex picture isOnline description phone"})
+				.then(conv => {
+					if(conv.participants.some(user => user._id.equals(socket.user._id))) {
+						var conversation = conv.toObject();
+						conversation.friend = conversation.participants.find(x => !x._id.equals(socket.user._id));
+						conversation.friend.isOnline = connected_users.some(user => user.user_id.equals(conversation.friend._id));
+						delete conversation.participants;
+						socket.emit('get_conversation', {message: 'success', conversation})
+					} else {
+						socket.emit('get_conversation', 'forbidden')
+					}
+				})
+				.catch(error => {
+					console.log(error)
+					socket.emit('get_conversation', 'dberror')
+				}) 
 			}
 		})
-	}
-}
 
-const authMiddleware = (req, res, next) => {
-	if (req.headers["token"]) {
-		JWT.verify(req.headers["token"], CONFIG.JWT_SECRET_KEY, (err, payload) => {
-			if (err) {
-				res.status(403).json({ message: "Invalid token" })
-			} else {
-				req.token_payload = payload;
-				next();
-			}
-		})
-	} else {
-		res.status(403).json({ message: "Missing login token" })
-	}
-}
+		socket.on('send_seen_event', data => {
 
-this.online_users = [];
-
-const check_online = () => {
-	User.find({isOnline: true}, "_id", (error, onlineUsers) => {
-		if(error) {
-			console.log(error)
-		}
-		onlineUsers.map( user => {
-			if(!this.online_users.find( onlineUser => onlineUser._id.equals(user._id))) {
-
-				this.online_users.push({_id: user._id, value: 0})
-			}
-		})
-	})
-} 
-
-const isStillOnline = (online_users = this.online_users) => {
-	online_users.map(user => {
-		if(user.value < -4) {
-			User.findByIdAndUpdate(user._id, {'$set': {'isOnline': false}}, (error) => {
-				if(error) {
-					console.log("is error" + error)
-				} 
+			Conversation.findById(data, (err, conversation) => {
+				if(err) {
+					console.log(err)
+					socket.emit('send_seen_event', 'dberror')
+				} else {
+					var isParticipant = conversation.participants.find( participant => participant.equals(socket.user._id));
+					if(isParticipant) {
+						if(conversation.unseen && conversation.unseen.equals(socket.user._id)) {
+					
+							conversation.unseen = null;
+							conversation.save(err => {
+								if(err) {
+									console.log(err)
+									socket.emit('send_seen_event', 'dberror')
+								} else {
+									socket.emit('send_seen_event', {message: 'success', id: conversation._id})
+								}
+							})
+						} else {
+							socket.emit('send_seen_event',  {message: 'success', id: conversation._id})
+						}
+					} else {
+						socket.emit('send_seen_event', 'forbidden')
+					}
+				}
 			})
-			this.online_users = this.online_users.filter(filterUser => !user._id.equals(filterUser._id))
-		}  else {
-			user.value -= 1;
-		}
-		return user;
+		})
+
+		socket.on('add_message', data => {
+			if(!data.message || !data.conversation_id) {
+				socket.emit('add_message', 'incomplete')
+				return;
+			} else {
+				Conversation.findById(data.conversation_id, (err, conversation) =>{
+
+					if(err) {
+						console.log(err);
+						socket.emit('add_message', 'dberror')
+					} else {
+
+						if(!conversation.participants.includes(socket.user._id)) {
+							socket.emit('add_message', 'forbidden')
+						} else {
+							conversation.unseen = conversation.participants.find( p => !p.equals(socket.user._id))._id;
+							conversation.messages.push({ author: socket.user._id, message: data.message, timestamp: Date.now() });
+							conversation.save(e => {
+								if (e) {
+									console.log(e)
+									socket.emit('add_message', 'dberror')
+								} else {
+									new_activity(conversation.participants, {type: 'message', conversation: conversation._id, message: conversation.messages[conversation.messages.length -1]})
+								}
+							})
+						}
+										
+					}
+				})
+			}
+		})
+
+		socket.on('forgot_password', data => {
+			if(!data) {
+				socket.emit('forgot_password', 'incomplete');
+			} else {
+				User.findOne({email: data},'password', (error, user) => {
+					if(error) {
+						console.log(error)
+						socket.emit('forgot_password', 'dberror')
+					} else {
+						if(!user) {
+							socket.emit('forgot_password', 'notfound')
+						} else {
+							var smtpConfig = {
+								service: 'Gmail',
+								host: 'smtp.gmail.com',
+								port: 465,
+								secure: true,
+								auth: {
+									user: "claudiukambi@gmail.com",
+									pass: "Messenger#@!"
+								}
+							}
+							var token = JWT.sign({key: user.password, email: data}, CONFIG.JWT_SECRET_KEY);
+		
+							var mailOption = {
+								from: "claudiukambi@gmail.com",
+								to: data,
+								subject: "Recover password token",
+								text: "Click on this link to reset your password",
+								html: "<p> <a href='http://localhost:3000/reset/"+token+"'> Click here to reset your password</a></p>"
+							}
+							var transporter = nodemailer.createTransport(smtpConfig);
+		
+							transporter.sendMail(mailOption, (err, info) => {
+								if (err) {
+									console.log(err)
+									socket.emit('forgot_password', 'Error when sending email')
+								} else {
+									socket.emit('forgot_password', 'success')
+								}
+							})
+						}
+					}
+				})
+			}
+		})
+
+		socket.on('reset_password', data => {
+			if(!data.token || !data.password) {
+				socket.emit('reset_password', 'incomplete')
+			} else {
+				JWT.verify(data.token, CONFIG.JWT_SECRET_KEY, (err, payload) => {
+					if(err) {
+						socket.emit('reset_password', 'badToken')
+					} else {
+						User.findOne({email: payload.email}, 'password', (err, user) => {
+							if(err) {
+								console.log(err)
+								socket.emit('reset_password', 'dberror')
+							} else if(!user) {
+								socket.emit('reset_password', 'badToken')
+							} else {
+								if(payload.key === user.password) {
+									bcrypt.hash(data.password,10,(err, hashed_password) => {
+										if(err) {
+											console.log(err);
+											socket.emit('reset_password', 'Error when updating password')
+										} else {
+											user.password = hashed_password;
+											user.save((error) => {
+												if(error) {
+													console.log(error);
+													socket.emit('reset_password', 'dberror')
+												} else {
+													socket.emit('reset_password', 'success')
+												}
+											})
+										}
+									})
+								} else {
+									socket.emit('reset_password', 'badToken')
+								}
+							}
+						})
+					}
+				})
+			}
+		})
+
+		socket.on('update_profile', data => {
+			User.findById(data._id, (err, user) => {
+				if(err) {
+					console.log(err);
+					socket.emit('update_profile', 'dberror')
+				} else {
+
+					if(data.password !== '') {
+							user.password = bcrypt.hashSync(data.password, 10);
+						}
+					user.firstName = data.firstName;
+					user.lastName = data.lastName;
+					user.description = data.description;
+					if(data.age !== '') {
+						user.age = data.age
+					} else {
+						user.age = null;
+					}
+					if(data.sex !== '') {
+						user.sex = data.sex
+					} else {
+						user.sex = null;
+					}
+					user.phone = data.phone;
+					user.picture = data.picture;
+					user.save(err => {
+						if(err) {
+							console.log("Error at updating profile " + err)
+							socket.emit('update_profile', 'dberror')
+						} else {
+							const {friends, password, ...rest} = user.toObject();
+							socket.emit('update_profile', {message: 'success', user: rest})
+						}
+					})
+				}
+			})
+		})
+
+		socket.on('disconnect', () => {
+			var user = connected_users.find( user => user.socket_id === socket.id);
+			if(user) {
+				console.log(user)
+				socket.broadcast.emit('online_status', {user_id: user.user_id, status: false});
+			}
+			connected_users = connected_users.filter(user => user.socket_id !== socket.id);
+		})
 	})
-
-}
-
-setInterval(check_online, 10000)
-setInterval(isStillOnline, 1000)
-
-const test = (req, res) => {
-
-	res.status(200).json(!this.online_users.find( user => user._id.equals(req.user._id)))
-}
-
-const test_without_login = (req, res) => {
-	res.status(200).json("test")
-}
-
-module.exports = {
-	register,
-	login,
-	login_using_token,
-	update_profile,
-	get_my_data,
-	forgot_password,
-	reset_password,
-	authMiddleware,
-	extractDataMiddleware,
-	send_friend_request,
-	confirm_friend_request,
-	get_friends_list,
-	get_friends_suggestions,
-	get_friends_requests,
-	get_conversations_list,
-	check_activity,
-	test,
-	test_without_login
+	
 }
