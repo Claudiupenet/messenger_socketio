@@ -31,7 +31,7 @@ class App extends React.Component {
 
    componentDidMount() {
 
-    const socket = socketIO('http://localhost:4000');
+    const socket = socketIO('/');
     if(socket) {
       this.setState({socket})
     }
