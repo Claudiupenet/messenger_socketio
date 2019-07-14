@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ./app/index.js",
+    "start": "nodemon ./app/index.js",
     "dev": "concurrently \"nodemon ./app/index.js\" \"cd messengerFront && npm start\"",
     "heroku-postbuild": "cd messengerFront && npm install --only=dev && npm install && npm run build"
   },
@@ -13,7 +13,7 @@
   "license": "ISC",
   "engines": {
     "node": "8.11.0"
-},
+  },
   "dependencies": {
     "bcrypt": "^3.0.6",
     "body-parser": "^1.19.0",
@@ -26,6 +26,7 @@
     "mongodb": "^3.2.4",
     "mongoose": "^5.5.9",
     "nodemailer": "^6.2.1",
+    "nodemon": "^1.19.1",
     "path": "^0.12.7",
     "s": "^0.1.1",
     "socket.io": "^2.2.0"
