@@ -421,7 +421,7 @@ module.exports = io => {
 								secure: true,
 								auth: {
 									user: "claudiukambi@gmail.com",
-									pass: "Messenger#@!"
+									pass: 
 								}
 							}
 							var token = JWT.sign({key: user.password, email: data}, secret_key);
